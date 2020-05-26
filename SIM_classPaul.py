@@ -19,12 +19,12 @@ warnings.filterwarnings('ignore')
 # In[4]:
 
 
-def gen_arrivals(arr_rates, mean_patience):
+def gen_arrivals(arr_rates, mean_patience, total_hours):
     arrs = pd.DataFrame(columns=["time", "patience", "type"])
     arr_nums = np.random.poisson(arr_rates)
     num_types = len(arr_rates)
     for i in range(num_types):
-        for j in range(24):
+        for j in range(total_hours):
             arr_dict = {'time': j+np.random.uniform(0, 1, arr_nums[i][j]),
                      'patience': np.random.exponential(mean_patience[i][j], arr_nums[i][j]),
                      'type':[i]*arr_nums[i][j]}
@@ -46,7 +46,7 @@ class Simulator():
     # service_mean_types (array 3*1) - mean service times for each customer type (fixed over hours)
     # service_rates (array 24*1) = 1/(mean service time), where mean is weighted over types arriving in that hour
 
-    def __init__(self, arrivals, week, day, server_schedule, service_mean_types, server_rates, service_distribution, speed_up_flag):
+    def __init__(self, arrivals, week, day, server_schedule, service_mean_types, server_rates, total_hours, service_distribution, speed_up_flag):
 
         self.week = week
         self.day = day
@@ -58,7 +58,7 @@ class Simulator():
         # servers schedule and service rates (the latter by types)
         self.service_distribution = service_distribution
         self.speed_up_flag = speed_up_flag
-        self.server_schedule = pd.DataFrame(server_schedule, columns=range(24), index=range(max_servers))
+        self.server_schedule = pd.DataFrame(server_schedule, columns=range(total_hours), index=range(max_servers))
         self.max_servers = len(self.server_schedule)
         self.num_servers = np.sum(self.server_schedule, axis=0) # number of available servers each hour
         self.server_rates = server_rates # average server_rates per hour (24 array)
@@ -78,8 +78,9 @@ class Simulator():
         self.queue = []
         self.in_queue = [0]*self.cust_types
         # prepapring "self.summary" output df, and initializing it
-        cols = ['Arrival_num', 'Arrival_time', 'Checkin_time', 'Service_time', 'Exit_time', 'type',
-                                             'n_servers', 'LSD', 'WT_QTD', 'LES', 'HOL', 'Real_WT']
+        cols = ['Arrival_num', 'Arrival_time', 'Checkin_time', 'Service_time', 'Exit_time', 'type', 'n_servers',
+                'n_available', 'n_not_available', 'LSD', 'mu', 'abandonments', 'teta', 'previous_WT',
+                'WT_QTD', 'WT_QTD_bis', 'LES', 'HOL', 'Real_WT']
         for i in range(self.cust_types):
             cols.extend(['queue' + str(i+1)])
         self.summary = pd.DataFrame(columns=cols, index=range(self.num_arrivals))
@@ -92,7 +93,7 @@ class Simulator():
         self.list_t_depart = list(self.server_status['Finish'])
         # initializing the clock
         self.clock = 0.0 + self.hour
-        self.max_time = 24.
+        self.max_time = float(total_hours)
         #print(cols)
         #print(self.summary)
    
@@ -118,8 +119,7 @@ class Simulator():
         
         t_event = min(self.t_arrival, self.t_depart, self.t_abandon, self.t_next_hour)
         self.clock = t_event
-        if self.clock == 2.025785392032948:
-            print('breakpoint')
+
         # if self.clock == float('inf'):
         #     break
         if self.t_depart == t_event:
@@ -133,13 +133,32 @@ class Simulator():
 
     def handle_arrival_event(self):
         self.arrival_num = np.argmin(self.list_t_arrival)
-
+        # if self.arrival_num > 14355:
+        #     print('Breakpoint')
         #print(self.arrival_num)
         self.list_t_arrival[self.arrival_num] = float('inf')
         self.summary.loc[self.arrival_num, 'Arrival_time'] = self.clock
+        self.summary.loc[self.arrival_num, 'n_available'] = len(self.server_status.loc[self.server_status.Status == 1])
+        self.summary.loc[self.arrival_num, 'n_not_available'] = len(self.server_status.loc[self.server_status.Status == 2])
         self.summary.loc[self.arrival_num, 'n_servers'] = num_servers[self.hour]
         self.summary.loc[self.arrival_num, 'type'] = self.arrivals['type'].iloc[self.arrival_num]
-        #
+
+        if self.arrival_num >= 1:
+            window = self.summary.loc[self.arrival_num - 1]['queue1'] + self.summary.loc[self.arrival_num - 1][
+                'queue2'] + 100  # the rolling's window take into account the 100 previous customers that got a service
+            self.summary.loc[self.arrival_num, 'mu'] = 1/self.summary['Service_time'].rolling(window=window, min_periods=1).mean().iloc[self.arrival_num]
+            self.summary.loc[self.arrival_num, 'abandonments'] = (self.summary['Checkin_time'] == np.inf).rolling(window=100, min_periods=1).sum().iloc[self.arrival_num]
+            self.summary.loc[self.arrival_num, 'previous_WT'] = self.summary['Real_WT'].rolling(window=window, min_periods=1).mean().iloc[self.arrival_num]
+        else: # For the first arrival event of the day each parameter is update manually
+            self.summary.loc[self.arrival_num, 'mu'] = 1/self.service_mean_types[self.summary.loc[self.arrival_num, 'type']][self.hour].item()
+            self.summary.loc[self.arrival_num, 'abandonments'] = 0
+            self.summary.loc[self.arrival_num, 'previous_WT'] = 0
+
+        if self.summary.loc[self.arrival_num, 'previous_WT'] == 0: #teta definition
+            self.summary.loc[self.arrival_num, 'teta'] = 0
+        else:
+            self.summary.loc[self.arrival_num, 'teta'] = self.summary.loc[self.arrival_num, 'abandonments']/\
+                                                         self.summary.loc[self.arrival_num, 'previous_WT']
         #
         inds = np.array((self.server_status.iloc[:, 0] == 1)) & np.array((self.server_schedule.iloc[:, self.hour] > 0))  #test for idle
         # print(np.sum(inds)," -arrival")
@@ -153,15 +172,16 @@ class Simulator():
             les_id = np.argmax(np.array(self.server_status['Start']))
             #les_id = np.argmax(np.array(self.server_status['Start'].loc[np.where(self.server_status['Start'] > 0)[0]]))
             self.summary.loc[self.arrival_num, 'LES'] = self.server_status.loc[les_id, 'Wait']
-            self.summary.iloc[self.arrival_num, -self.cust_types:] = self.in_queue
+            self.summary.iloc[self.arrival_num, - self.cust_types:] = self.in_queue
             self.summary.loc[self.arrival_num, 'WT_QTD'] = \
                 (len(self.queue) + 1) / (self.num_servers[self.hour] * self.server_rates[0][self.hour])
-            if np.where(((self.summary.Service_time.notna())& ((self.summary.Exit_time < self.clock))))[0].size != 0:
+            self.summary.loc[self.arrival_num, 'WT_QTD_bis'] = np.sum(1/(self.summary.loc[self.arrival_num, 'n_servers']*self.summary.loc[self.arrival_num, 'mu'] +
+                                                                         self.summary.loc[self.arrival_num, 'teta']*np.arange(self.summary.loc[self.arrival_num, 'queue1']+
+                                                                                                                              self.summary.loc[self.arrival_num, 'queue2']+1))) #TODO: check the formula
+            if np.where(((self.summary.Service_time.notna()) & ((self.summary.Exit_time < self.clock))))[0].size != 0:
                 lsd_idx = self.summary.index[
                         self.summary['Exit_time'] == max(self.summary.iloc[np.where(((self.summary.Service_time.notna()) & ((self.summary.Exit_time < self.clock))))[0]]['Exit_time'])]
                 self.summary.loc[self.arrival_num, ['LSD']] = float(self.summary.loc[lsd_idx[-1], 'Service_time'])
-
-
             else:
                 self.summary.loc[self.arrival_num, ['LSD']] = 0
             # update queue information
@@ -179,7 +199,7 @@ class Simulator():
             self.server_status.loc[server_num, 'Type'] = self.customer_type
             self.summary.loc[self.arrival_num, ['Checkin_time', 'Service_time', 'Exit_time', 'Real_WT']] = \
                       [self.clock, service_time, self.clock+service_time, 0]
-            self.summary.loc[self.arrival_num, ['LSD', 'WT_QTD', 'LES', 'HOL']] = [None, 0., 0., 0.]
+            self.summary.loc[self.arrival_num, ['LSD', 'WT_QTD', 'WT_QTD_bis', 'LES', 'HOL']] = [None, 0., 0., 0., 0.]
             self.summary.iloc[self.arrival_num, -self.cust_types:] = [0, 0]
             if np.where(((self.summary.Service_time.notna()) & ((self.summary.Exit_time < self.clock))))[0].size != 0:
                 lsd_idx = self.summary.index[
@@ -219,7 +239,6 @@ class Simulator():
             self.in_queue[self.customer_type] -= 1
             self.queue.pop(0)
         self.list_t_depart[server_idx] = self.server_status.Finish[server_idx]
-        
 
     def handle_change_hour_event(self):
         self.hour += 1
@@ -245,7 +264,7 @@ class Simulator():
         custtype = self.customer_type
         queue_length = np.sum(self.in_queue)
         if self.speed_up_flag:
-            speed_up = math.exp(len(self.queue)*0.02)
+            speed_up = math.exp(-len(self.queue)*0.02)
         else:
             speed_up = 1
         # for speeding up service due to queue length (decreasing service times)
@@ -266,76 +285,90 @@ class Simulator():
         return service
 
 np.random.seed(42)
+path = input("Is it the Izik's computer? : ")
 
-for exp in np.arange(1, 2, 1):
+for exp in [0, 1, 2]:
     print('Experiment: ' + str(exp))
+    if path == '0':
+        current_path = r'C:\Users\Elisheva\Dropbox (BIU)\QueueMining\WorkingDocs\Simulator\Experiments\Experiment_' + str(exp)
+    elif path == '1':
+        current_path = r'C:\Users\elishevaz\Dropbox (BIU)\QueueMining\WorkingDocs\Simulator\Experiments\Experiment_' + str(exp)
+
     start = time.time()
     df = pd.DataFrame()
     ctypes = 2
     ctypes_dict = {0: 'private', 1: 'not_private'}
     c_std_dict = {0: 'std_private', 1: 'std_not_private'}
     speed_up_flag = 0
-
+    total_hours = 12
+    if exp == 0:
+        total_hours = 24
     if exp == 2:
         service_distribution = 'Exponential'
-    elif exp != 2 :
+    elif exp != 2:
         service_distribution = 'LogNormal'
     elif exp == 6:
         speed_up_flag = 1
 
-    #path = r'C:\Users\elishevaz\Dropbox (BIU)\QueueMining\WorkingDocs\Simulator\Experiments\Experiment_'+str(exp)+'/'
-    path = r'C:\Users\Elisheva\Dropbox (BIU)\QueueMining\WorkingDocs\Data Exploration\Excel files\Simulator Data\One_month_exploration/'
-    arr_rates_types = np.zeros((2, 24), dtype=int)
-    df_arrivals = pd.read_csv(path + 'Arrivals.csv')
-    df_service_time = pd.read_csv(path + 'Service_time.csv')
-    df_abandonment = pd.read_csv(path + 'Abandonment.csv')
-    df_number_of_agents = pd.read_csv(path + 'number_of_agents.csv')
+    arr_rates_types = np.zeros((2, total_hours), dtype=int)
+    df_arrivals = pd.read_csv(current_path + '/Arrivals.csv')
+    df_service_time = pd.read_csv(current_path + '/Service_time.csv')
+    df_abandonment = pd.read_csv(current_path + '/Abandonment.csv')
+    df_number_of_agents = pd.read_csv(current_path + '/number_of_agents.csv')
 
-    for week in range(9):
+    for week in range(6):
         print('---------------------------------Week: ' + str(week) + '---------------------------------')
-        for day in [0, 1, 2, 3, 6]: #no take into account saturday
+        for day in [0, 1, 2, 3, 6]: #wihtout saturday
         #for day in [1]:
             print('---------------------------------Day: ' + str(day) + '---------------------------------')
             for type in range(ctypes):
-                #arr_rates_types[type] = df_arrivals[ctypes_dict[type]].loc[df_arrivals['Weekday'] == day].to_numpy()
-                mean = df_arrivals[ctypes_dict[type]].loc[df_arrivals['Weekday'] == day].to_numpy()
-                std = df_arrivals[c_std_dict[type]].loc[df_arrivals['Weekday'] == day].to_numpy()
-                arr_rates_types[type] = [int(np.random.uniform(low= max(0, mean[i]-std[i]), high=(mean[i]+std[i]))) for i in range(len(mean))]
+                if exp == 0:
+                    mean = df_arrivals[ctypes_dict[type]].loc[df_arrivals['Weekday'] == day].to_numpy()
+                    std = df_arrivals[c_std_dict[type]].loc[df_arrivals['Weekday'] == day].to_numpy()
+                    arr_rates_types[type] = [int(np.random.uniform(low= max(0, mean[i]-std[i]), high=(mean[i]+std[i]))) for i in range(len(mean))]
+                else:
+                    arr_rates_types[type] = df_arrivals[ctypes_dict[type]].loc[df_arrivals['Weekday'] == day].to_numpy()
             num_servers = df_number_of_agents['number_of_agents'].loc[df_number_of_agents['Weekday'] == day].to_numpy()
             max_servers = np.max(num_servers)
             hours = [num_servers > 0]
             #service_time definition
-            private_mean_s = df_service_time['private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
-            private_std_s = df_service_time['std_private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
-            service_time_sample_private = np.array([int(np.random.uniform(low=max(0, private_mean_s[i]-private_std_s[i]),
+
+            if exp == 0: # parameters with std
+                total_hours = 24
+                private_mean_s = df_service_time['private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
+                private_std_s = df_service_time['std_private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
+                service_time_sample_private = np.array([int(np.random.uniform(low=max(0, private_mean_s[i]-private_std_s[i]),
                                                                           high=(private_mean_s[i]+private_std_s[i]))) for i in range(len(private_mean_s))])
-            # service_time_sample_private = df_service_time['private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
-            not_private_mean_s = df_service_time['not_private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
-            not_private_std_s = df_service_time['std_not_private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
-            service_time_sample_not_private = np.array([int(np.random.uniform(low=max(0, not_private_mean_s[i] - not_private_std_s[i]),
+
+                not_private_mean_s = df_service_time['not_private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
+                not_private_std_s = df_service_time['std_not_private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
+                service_time_sample_not_private = np.array([int(np.random.uniform(low=max(0, not_private_mean_s[i] - not_private_std_s[i]),
                                                                           high=(not_private_mean_s[i] + not_private_std_s[i]))) for i in range(len(not_private_mean_s))])
+            else: # parameters without std (mean definition)
+                total_hours = 12
+                service_time_sample_not_private = df_service_time['not_private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
+                service_time_sample_private = df_service_time['private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
 
-            # service_time_sample_not_private = df_service_time['not_private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
-            service_rates = np.divide(np.full((1, 24), 3600, dtype=float), service_time_sample_private)
+            service_rates = np.divide(np.full((1, total_hours), 3600, dtype=float), service_time_sample_private) #TODO: CHECK IF WE CAN ADD THE NOT PRIVATE SERVICE RATE
 
-            server_schedule = np.reshape([0] * max_servers * 24, (max_servers, 24))
-            for j in range(24):
+            server_schedule = np.reshape([0] * max_servers * total_hours, (max_servers, total_hours))
+            for j in range(total_hours):
                 for i in range(max_servers):
                     if i < num_servers[j]:
                         server_schedule[i][j] = 1
             # now call arrivals generator - use arrays "arr_rates_types", "mean_patience_types"
             mean_patience = df_abandonment['wait_time'].loc[df_abandonment['Weekday'] == day].to_numpy()/3600
             #mean_patience_types = np.full((1, ctypes), mean_patience)
-            mean_patience_types = [mean_patience, np.array([float('inf')] * 24)]
+            mean_patience_types = [mean_patience, np.array([float('inf')] * total_hours)]
             mean_service_private = service_time_sample_private/3600
             mean_service_not_private = service_time_sample_not_private/3600
 
             service_mean_types = [mean_service_private, mean_service_not_private]
             #service_std_types = [sigma_private, sigma_not_private]
-            arrivals = gen_arrivals(arr_rates_types, mean_patience_types)
+            arrivals = gen_arrivals(arr_rates_types, mean_patience_types, total_hours)
             # -> produces "arrivals" dataframe with columns: "arr_num","time","patience", "type"
             # then call simulator - use arrays: "arrivals", "server_schedule", "service_mean_types", "service_rates"
-            s = Simulator(arrivals, week, day, server_schedule, service_mean_types, service_rates, service_distribution=service_distribution, speed_up_flag=speed_up_flag)
+            s = Simulator(arrivals, week, day, server_schedule, service_mean_types, service_rates, total_hours=total_hours, service_distribution=service_distribution, speed_up_flag=speed_up_flag)
             s.run()
             df = pd.concat([df, s.summary], ignore_index=True)
 
@@ -346,81 +379,6 @@ for exp in np.arange(1, 2, 1):
     print(process_time/60)
     print('Data Shape: ', df.shape)
 
-    df.to_csv(r'C:\Users\Elisheva\Dropbox (BIU)\QueueMining\WorkingDocs\Data Exploration\Excel files\Simulator Data\One_month_exploration\Two_months_simulation.csv')
+    df.to_csv(current_path+'/New_features_simulation.csv')
 
 
-
-
-# ctypes = 2# number of customer types
-# #
-# # relative arrival rates for each customer type
-# type1_ratios = [0.]*6+[1]*16+[0]*2     # regular customers - relative arrival rate= 1
-#                                            # less frequent customers -
-# type2 = {0: 0.2, 1: 0.4, 2: 0.6, 3: 0.8, 4: 0.4, 5: 0.4, 6: 0.1, 7: 0.1} #relative arrival rates per period
-# type2_ratios = [0.]*6
-# for k, v in type2.items():
-#     type2_ratios += [v, v]
-# type2_ratios += [0., 0.]
-# #
-# type3_ratios = []                            # intermediate arrival rates
-# for a, b in zip(type1_ratios, type2_ratios):
-#     type3_ratios.append((a+b)/2)
-# arr_ratios = np.array([type1_ratios, type2_ratios, type3_ratios])# array 3*24 with hourly arrival ratios by types
-# #
-# #print(arr_ratios)
-# arr_rates = np.reshape([0.] * 6 * 24, (6, 24))   # 6x24 array of arrival rates for each week day
-# day_ratios = [1.2, 1, 0.9, 0.9, 1.3]       # different relative arrival rates for each weekday (1-5)
-# base_arr_rate = 2.                            # *10 for peak period for type 1 (regular) customers
-# #
-# # weekday arrivalshape
-# weekday_shape = np.array([0, 0, 0, 0, 0, 0, 6, 6, 7, 7, 8, 8, 10, 10, 8, 8, 9, 9, 5, 5, 4, 4, 0, 0]) # 06:00 to 22:00
-# for i in range(5):
-#     arr_rates[i] = weekday_shape*float(day_ratios[i])*base_arr_rate
-#
-# arr_rates[5] = np.array([0, 0, 0, 0, 0, 0, 7, 7, 8, 8, 9, 9, 7, 7]+[0]*10)*base_arr_rate # Friday shape
-# #
-# arr_rates_types = np.reshape([0.]*ctypes*24, (ctypes, 24))  # will hold arrival rates for given day, by types
-# #
-# base_serv_time = 5/60 # 5 minutes or 12 per hour - depends on customer type - see ser_rates_types
-# ser_rates_types = np.reshape([1, 0.7, 0.8], (3, 1))
-# service_mean_types = base_serv_time/ser_rates_types # base service duration by type
-# #
-# mean_patience_types = 4*service_mean_types          # prepared to wait 4 times mean service time (by type)
-# #
-# service_mean_types
-# mean_patience_types
-# #
-# rho = 1.2      # approximate utilization (assuming no abandonment)
-# # num_servers
-# load_ratios = np.reshape([0.]*ctypes*24, (ctypes, 24))
-#
-# path = r'C:\Users\Elisheva\Dropbox\QueueMining\WorkingDocs\Data Exploration\Excel files\Simulator Data/'
-#
-# start = time.time()
-# df = pd.DataFrame()
-# for week in range(20):
-#     print('---------------------------------Week: ' + str(week) + '---------------------------------')
-#     for day in range(6):
-#         print('---------------------------------Day: ' + str(day) + '---------------------------------')
-#         for type in range(ctypes):
-#             arr_rates_types[type] = arr_rates[day]*arr_ratios[type]
-#             load_ratios[type] = arr_rates_types[type]*service_mean_types[type] #
-#         num_servers = (np.ceil(np.sum(load_ratios, axis=0)/rho)).astype(int)
-#         max_servers = np.max(num_servers)
-#         hours = [num_servers > 0]
-#         service_rates = np.array([0.] * 24) # will hold average server rates over 24 hours
-#         service_rates[tuple(hours)] = np.sum(arr_rates_types, axis=0)[tuple(hours)]/\
-#                                       np.sum(load_ratios, axis=0)[tuple(hours)]
-#         server_schedule = np.reshape([0] * max_servers * 24, (max_servers, 24))
-#         for j in range(24):
-#             for i in range(max_servers):
-#                 if i < num_servers[j]:
-#                     server_schedule[i][j] = 1
-#         # now call arrivals generator - use arrays "arr_rates_types", "mean_patience_types"
-#         arrivals = gen_arrivals(arr_rates_types, mean_patience_types)
-#         # -> produces "arrivals" dataframe with columns: "arr_num","time","patience", "type"
-#         # then call simulator - use arrays: "arrivals", "server_schedule", "service_mean_types", "service_rates"
-#         s = Simulator(arrivals, week, day, server_schedule, service_mean_types, service_rates)
-#         s.run()
-#         df = pd.concat([df, s.summary], ignore_index=True)
-#
