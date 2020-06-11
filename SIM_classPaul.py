@@ -147,8 +147,8 @@ class Simulator():
             window = self.summary.loc[self.arrival_num - 1]['queue1'] + self.summary.loc[self.arrival_num - 1][
                 'queue2'] + 100  # the rolling's window take into account the 100 previous customers that got a service
             self.summary.loc[self.arrival_num, 'mu'] = 1/self.summary['Service_time'].rolling(window=window, min_periods=1).mean().iloc[self.arrival_num]
-            self.summary.loc[self.arrival_num, 'abandonments'] = (self.summary['Checkin_time'] == np.inf).rolling(window=100, min_periods=1).sum().iloc[self.arrival_num]
-            self.summary.loc[self.arrival_num, 'previous_WT'] = self.summary['Real_WT'].rolling(window=window, min_periods=1).mean().iloc[self.arrival_num]
+            self.summary.loc[self.arrival_num, 'abandonments'] = (self.summary['Checkin_time'] == np.inf).rolling(window=window, min_periods=1).sum().iloc[self.arrival_num]
+            self.summary.loc[self.arrival_num, 'previous_WT'] = self.summary['Real_WT'].rolling(window=window, min_periods=1).sum().iloc[self.arrival_num]
         else: # For the first arrival event of the day each parameter is update manually
             self.summary.loc[self.arrival_num, 'mu'] = 1/self.service_mean_types[self.summary.loc[self.arrival_num, 'type']][self.hour].item()
             self.summary.loc[self.arrival_num, 'abandonments'] = 0
@@ -285,9 +285,9 @@ class Simulator():
         return service
 
 np.random.seed(42)
-path = input("Is it the Izik's computer? : ")
-
-for exp in [0, 1, 2]:
+path = input("Izik's computer? : ")
+shrink = input("System shrinked? : ")
+for exp in [1]:
     print('Experiment: ' + str(exp))
     if path == '0':
         current_path = r'C:\Users\Elisheva\Dropbox (BIU)\QueueMining\WorkingDocs\Simulator\Experiments\Experiment_' + str(exp)
@@ -315,8 +315,15 @@ for exp in [0, 1, 2]:
     df_service_time = pd.read_csv(current_path + '/Service_time.csv')
     df_abandonment = pd.read_csv(current_path + '/Abandonment.csv')
     df_number_of_agents = pd.read_csv(current_path + '/number_of_agents.csv')
+    if shrink == '1':
+        df_arrivals['private'] = np.ceil(df_arrivals['private'] / 8).astype(int)
+        df_arrivals['not_private'] = np.ceil(df_arrivals['not_private'] / 8).astype(int)
+        df_number_of_agents['number_of_agents'] = np.ceil(df_number_of_agents['number_of_agents']/8).astype(int)
+        number_of_weeks = np.arange(0, 9, 1)
+    else:
+        number_of_weeks = np.arange(0, 6, 1)
 
-    for week in range(6):
+    for week in number_of_weeks:
         print('---------------------------------Week: ' + str(week) + '---------------------------------')
         for day in [0, 1, 2, 3, 6]: #wihtout saturday
         #for day in [1]:
@@ -379,6 +386,9 @@ for exp in [0, 1, 2]:
     print(process_time/60)
     print('Data Shape: ', df.shape)
 
-    df.to_csv(current_path+'/New_features_simulation.csv')
+    if shrink == '1':
+        df.to_csv(current_path + '/New_features_simulation_shrinked.csv')
+    else:
+        df.to_csv(current_path+'/New_features_simulation.csv')
 
 
