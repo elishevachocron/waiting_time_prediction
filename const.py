@@ -3,7 +3,7 @@
 # ------------------------------------------------------------------- #
 algorithms_used = ['LR', 'RF', 'SVR', 'GBR', 'ANN', 'QTD', 'LES', 'HOL']
 n_folds = 5
-model_state = {'RF': 'fit', 'SVR': 'fit', 'GBR': 'fit', 'ANN': 'fit'} #"fit" the model, not using the "saved" model
+model_state = {'RF': 'saved', 'SVR': 'saved', 'GBR': 'saved', 'ANN': 'saved'} #"fit" the model, not using the "saved" model
 
 # ---------------------- Random Forest ------------------------------ #
 grid_values_rf = {'max_depth': [6, 8, 10, 12], 'n_estimators': [70, 100, 150, 200], 'n_jobs': [10]}
@@ -24,11 +24,11 @@ grid_values_ann = {'hidden_layer_sizes': [(128, 64), (64, 32), (32, 16), 30, 80]
 # ------------------------------------------------------------------- #
 # ------------------------------------------------------------------- #
 # ------------------------------------------------------------------- #
+#indicator feature: 'abandonment_indicator',
+features_type = {'set_features_1': ['Arrival_time', 'Day', 'n_available', 'n_not_available', 'LSD', 'queue1', 'queue2', 'mu', 'abandonments', 'previous_WT'],
+                 'set_features_2': ['Arrival_time', 'Day', 'n_available', 'n_not_available', 'LSD', 'queue1', 'queue2', 'mu', 'abandonments','previous_WT', 'HOL', 'LES']}
 
-features_type = {'set_features_1': ['Arrival_time', 'Day', 'n_available', 'n_not_available', 'LSD', 'queue1', 'queue2', 'mu', 'abandonments', 'abandonment_indicator', 'previous_WT'],
-                 'set_features_2': ['Arrival_time', 'Day', 'n_available', 'n_not_available', 'LSD', 'queue1', 'queue2', 'mu', 'abandonments', 'abandonment_indicator', 'previous_WT', 'HOL', 'LES']}
-
-columns_list = ['Arrival_time', 'Day', 'n_available', 'n_not_available', 'LSD', 'queue1', 'queue2', 'mu', 'abandonments', 'abandonment_indicator' 'previous_WT', 'WT_QTD', 'LES', 'HOL', 'Real_WT']
+columns_list = ['Arrival_time', 'Day', 'n_available', 'n_not_available', 'LSD', 'queue1', 'queue2', 'mu', 'abandonments', 'previous_WT', 'WT_QTD', 'LES', 'HOL', 'Real_WT']
 
 computer = input("Izik's Computer?: ")
 
