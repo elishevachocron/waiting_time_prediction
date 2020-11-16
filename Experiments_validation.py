@@ -31,7 +31,7 @@ for exp in [1]:
     #
     # df_parameters[['Weekday', 'hour_bin', 'rho']].to_csv(path + str(exp) + '/Rho.csv')
 
-    df_simulator = pd.read_csv(path + str(exp) + '/New_features_simulation_shrinked.csv')
+    df_simulator = pd.read_csv(path + str(exp) + '/New_features_simulation.csv')
     #Waiting Time Distribution
     data = df_simulator['Real_WT'].to_numpy() * 3600
     plt.figure()
@@ -41,7 +41,7 @@ for exp in [1]:
     plt.savefig(path + str(exp) + '\Results_lower_system/Waiting_time_distribution_new_set.png')
 
     # Waiting Time + QT prediction per hour
-    if exp==0:
+    if exp == 0:
         x = np.arange(0, 24, 1)
     else:
         x = np.arange(8, 20, 1)
@@ -57,7 +57,7 @@ for exp in [1]:
     plt.xlabel('Hour')
     plt.ylabel('Waiting Time (sec)')
     plt.legend()
-    plt.savefig(path + str(exp) + '\Results_lower_system/QT_prediction_new_set.png')
+    plt.savefig(path + str(exp) + '/QT_prediction.png')
 
     if exp in [0, 3, 9, 10, 11]:
 

@@ -1,0 +1,172 @@
+y_pred_rf_test = grid_rf.predict(X_test_norm)
+y_pred_rf_test = np.array(y_pred_rf_test).reshape(-1)
+y_test = np.array(y_test).reshape(-1)
+y_QTD_test = np.array(y_QTD_test).reshape(-1)
+diff_ml = np.abs(y_pred_rf_test - y_test)
+diff_qtd = np.abs(y_QTD_test - y_test)
+print(np.sum(diff_ml < diff_qtd) / len(diff_qtd))
+
+diff_ml *=3600
+diff_qtd *= 3600
+start = min(diff_ml.min(), diff_qtd.min())
+end = max(np.percentile(diff_ml, 98), np.percentile(diff_qtd, 98))
+plt.figure()
+plt.hist(diff_ml, bins=np.linspace(start, end, 100),color='red')
+plt.hist(diff_qtd, bins=np.linspace(start, end, 100), color='blue', rwidth=0.7)
+plt.show()
+
+from sklearn.linear_model import LinearRegression
+X_train_norm_quad = np.concatenate((X_train_norm, X_train_norm ** 2), axis=1)
+X_test_norm_quad = np.concatenate((X_test_norm, X_test_norm ** 2), axis=1)
+test = LinearRegression()
+test.fit(X_train_norm_quad, y_train)
+y_res = test.predict(X_test_norm_quad)
+rmse_test = math.sqrt(mean_squared_error(y_test, y_res)) * 3600
+rmse_test
+
+
+df_arrivals = pd.read_csv(r'C:\Users\Elisheva\Dropbox (BIU)\QueueMining\WorkingDocs\Simulator\Experiments\Experiment_0/Arrivals.csv')
+df_arrivals['total'] = df_arrivals['private']+df_arrivals['not_private']
+df_arrivals['private'] = (df_arrivals['total']*0.95).astype(int)
+df_arrivals['not_private'] = (df_arrivals['total']*0.05).astype(int)
+df_arrivals.to_csv(r'C:\Users\Elisheva\Dropbox (BIU)\QueueMining\WorkingDocs\Simulator\Experiments\Experiment_0.1/Arrivals.csv')
+
+df_service_time = pd.read_csv(r'C:\Users\Elisheva\Dropbox (BIU)\QueueMining\WorkingDocs\Simulator\Experiments\Experiment_0/Service_time.csv')
+df_service_time['not_private'] = (df_service_time['private']*5).astype(int)
+df_service_time.to_csv(r'C:\Users\Elisheva\Dropbox (BIU)\QueueMining\WorkingDocs\Simulator\Experiments\Experiment_0.1/Service_time.csv')
+
+
+
+idx = 36135
+relevant = data.loc[(data['Week']==data.loc[idx]['Week']) & (data['Day']==data.loc[idx]['Day']) & ((data['Exit_time']<data.loc[idx]['Arrival_time']) | (data['Checkin_time']<data.loc[idx]['Arrival_time']))][-100:]
+mu = 1/relevant['Service_time'].mean()
+previous_WT = relevant['Real_WT'].sum()
+abandonment = (relevant['Checkin_time'] == np.inf).sum()
+theta = (relevant['Checkin_time'] == np.inf).sum()/relevant['Real_WT'].sum()
+QTP_data_based = np.sum(1/(data.loc[idx, 'n_servers']*data.loc[idx, 'mu'] + data.loc[idx, 'teta']*np.arange(data.loc[idx, 'queue1']+ data.loc[idx, 'queue2']+1)))
+
+print('mu: ', mu)
+print('previous_WT: ', previous_WT)
+print('abandonment: ', abandonment)
+print('QTP_data_based: ', QTP_data_based)
+
+
+
+for idx in np.arange(1, 50, 1):
+    relevant = data.loc[(data['Week'] == data.loc[idx]['Week']) & (data['Day'] == data.loc[idx]['Day']) &
+                (data['Exit_time'] < data.loc[idx]['Arrival_time']) ][-100:]
+    mu = 1 / relevant['Service_time'].mean()
+    previous_WT = relevant['Real_WT'].sum()
+    abandonment = (relevant['Checkin_time'] == np.inf).sum()
+    theta = (relevant['Checkin_time'] == np.inf).sum() / relevant['Real_WT'].sum()
+    QTP_data_based = np.sum(1 / (data.loc[idx, 'n_servers'] * data.loc[idx, 'mu'] + data.loc[idx, 'teta'] * np.arange(
+        data.loc[idx, 'queue1'] + data.loc[idx, 'queue2'] + 1)))
+    print('------------------------IDX: '+str(idx)+'------------------------')
+    if mu != data.loc[data['mu']]:
+        ('There is a problem with mu')
+    if abandonment != data.loc[data['abandonments']]:
+        ('There is a problem with abandonment')
+    if theta != data.loc[data['teta']]:
+        ('There is a problem with theta')
+    if previous_WT != data.loc[data['previous_WT']]:
+        ('There is a problem with previous_WT')
+    if QTP_data_based != data.loc[data['WT_QTD_bis']]:
+        ('There is a problem with QTD_bis')
+
+
+experiment = 0
+path_to_load = path + str(experiment)
+data = pd.read_csv(path_to_load + '/Sub_simulation_corrected_try.csv')
+data = data.loc[data.Arrival_time>=8.75]
+data.isna().sum()
+
+relevant = data.loc[(data.Week==3) & (data.Day == 1)]
+relevant.reset_index(drop=True, inplace=True)
+relevant.loc[(relevant.QTP_weighted.isna()) & ~(relevant.theta.isna()) & ~(relevant.total_queue == 0)]
+
+
+
+from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import mean_squared_error
+import math
+
+experiment = 12
+path_to_load = path + str(experiment)
+data = pd.read_csv(path_to_load + '/Simulation_corrected.csv')
+data = data.loc[data.Arrival_time>=8.75]
+
+print('Test/Train Split')
+df = data
+# QT estimation of Waiting Time
+week_split = 4  # 6 for 9 weeks simulation, 4 for 6 weeks simulation, 24 for 30 weeks simulation
+y_QTP_test = df.loc[df.Week > week_split]['QTP_data_based'].to_frame()
+y_QTP_test.reset_index(drop=True, inplace=True)
+y_QTP_weighted_test = df.loc[df.Week > week_split]['QTP_weighted'].to_frame()
+y_QTP_weighted_test.reset_index(drop=True, inplace=True)
+y_LES_test = df.loc[df.Week > week_split]['LES'].to_frame()
+y_LES_test.reset_index(drop=True, inplace=True)
+
+y_HOL_test = df.loc[df.Week > week_split]['HOL'].to_frame()
+y_HOL_test.reset_index(drop=True, inplace=True)
+# Real Waiting Time
+y = df.loc[df.Week > week_split]['Real_WT'].to_frame()
+y.reset_index(drop=True, inplace=True)
+mean_y = float(y.mean() * 3600)
+
+def rrmse (y, y_hat, mean_y):
+    y = y.to_numpy().reshape(-1)
+    y_hat = y_hat.to_numpy().reshape(-1)
+    rmse_test = math.sqrt(mean_squared_error(y, y_hat)) * 3600
+    rrmse_test = rmse_test/mean_y
+    return rmse_test, rrmse_test
+
+def loss_function (y_hat, y, threshold):
+    y = y.to_numpy().reshape(-1)*3600
+    y_hat = y_hat.to_numpy().reshape(-1)*3600
+    difference_abs = np.absolute(y_hat - y) - np.full(len(y), threshold)
+    difference_abs[difference_abs < 0] = 0
+    return np.mean(difference_abs)
+
+print('-----------------LES----------------')
+print('RMSE: ', rrmse(y, y_LES_test, mean_y)[0])
+print('RRMSE: ', rrmse(y, y_LES_test, mean_y)[1])
+print('MeanLoss: ', loss_function(y_LES_test, y, 10))
+
+print('-----------------HOL----------------')
+print('RMSE: ', rrmse(y, y_HOL_test, mean_y)[0])
+print('RRMSE: ', rrmse(y, y_HOL_test, mean_y)[1])
+print('MeanLoss: ', loss_function(y_HOL_test, y, 10))
+
+print('-----------------QTP----------------')
+print('RMSE: ', rrmse(y, y_QTP_test, mean_y)[0])
+print('RRMSE: ', rrmse(y, y_QTP_test, mean_y)[1])
+print('MeanLoss: ', loss_function(y_QTP_test, y, 10))
+
+print('-----------------QTP_weighted----------------')
+print('RMSE: ', rrmse(y, y_QTP_weighted_test, mean_y)[0])
+print('RRMSE: ', rrmse(y, y_QTP_weighted_test, mean_y)[1])
+print('MeanLoss: ', loss_function(y_QTP_weighted_test, y, 10))
+
+
+
+dict_exp ={0: [], 12:[]}
+
+for exp in [0, 12]:
+    path_to_load = path + str(exp)
+    path_to_save = path + str(exp) + '\\Final_results'
+    path_error_analysis = path_to_save + '\\Error_analysis'
+    data = pd.read_csv(path_to_load+'/Simulation_corrected_full_imple.csv')
+
+    data_class = DataLoader(num=exp, data=data, week_split=4, abandonment_removed_train=1, abandonment_removed_test=1,  features_list=features, beginning=exp_beginning[exp])
+    data_class.print_summary()
+
+    #Data loading
+    X_train, y_train, mean_WT_train = data_class.extract_train()
+    X_test, y_test, mean_WT_test = data_class.extract_test()
+    dict_exp[exp].append(pd.Series(y_train, name='Train'))
+    dict_exp[exp].append(pd.Series(y_test, name='Test'))
+
+df_0 = pd.concat([dict_exp[0][0], dict_exp[0][1]], axis=1).reset_index()
+df_12 = pd.concat([dict_exp[12][0], dict_exp[12][1]], axis=1).reset_index()
+boxplot_0 = df_0.boxplot(column=['Train', 'Test'])
+boxplot_12 = df_12.boxplot(column=['Train', 'Test'])

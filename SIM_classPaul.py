@@ -1,8 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[3]:
-
 
 import numpy as np
 import pandas as pd
@@ -98,7 +93,7 @@ class Simulator():
         #print(self.summary)
    
     def run(self):
-        while (min(self.list_t_arrival) < self.max_time) or (min(self.list_t_depart) < self.max_time):
+        while (min(self.list_t_arrival) < self.max_time) or (min(self.list_t_depart) < self.max_time) or not np.all((np.array(self.in_queue) == 0)):
         #while (min(self.list_t_arrival) < self.max_time) or (min(self.list_t_depart) < 50):
             self.advance_time()
 
@@ -133,8 +128,8 @@ class Simulator():
 
     def handle_arrival_event(self):
         self.arrival_num = np.argmin(self.list_t_arrival)
-        # if self.arrival_num > 14355:
-        #     print('Breakpoint')
+        if self.arrival_num > 10:
+             print('Breakpoint')
         #print(self.arrival_num)
         self.list_t_arrival[self.arrival_num] = float('inf')
         self.summary.loc[self.arrival_num, 'Arrival_time'] = self.clock
@@ -169,6 +164,7 @@ class Simulator():
                 self.summary.loc[self.arrival_num, 'HOL'] = self.clock - self.arrivals.time[hol_num]
             else:
                 self.summary.loc[self.arrival_num, 'HOL'] = 0
+
             les_id = np.argmax(np.array(self.server_status['Start']))
             #les_id = np.argmax(np.array(self.server_status['Start'].loc[np.where(self.server_status['Start'] > 0)[0]]))
             self.summary.loc[self.arrival_num, 'LES'] = self.server_status.loc[les_id, 'Wait']
@@ -284,111 +280,113 @@ class Simulator():
             service = np.random.exponential(self.service_mean_types[custtype][self.hour].item()*speed_up)
         return service
 
-np.random.seed(42)
-path = input("Izik's computer? : ")
-shrink = input("System shrinked? : ")
-for exp in [1]:
-    print('Experiment: ' + str(exp))
-    if path == '0':
-        current_path = r'C:\Users\Elisheva\Dropbox (BIU)\QueueMining\WorkingDocs\Simulator\Experiments\Experiment_' + str(exp)
-    elif path == '1':
-        current_path = r'C:\Users\elishevaz\Dropbox (BIU)\QueueMining\WorkingDocs\Simulator\Experiments\Experiment_' + str(exp)
 
-    start = time.time()
-    df = pd.DataFrame()
-    ctypes = 2
-    ctypes_dict = {0: 'private', 1: 'not_private'}
-    c_std_dict = {0: 'std_private', 1: 'std_not_private'}
-    speed_up_flag = 0
-    total_hours = 12
-    if exp == 0:
-        total_hours = 24
-    if exp == 2:
-        service_distribution = 'Exponential'
-    elif exp != 2:
-        service_distribution = 'LogNormal'
-    elif exp == 6:
-        speed_up_flag = 1
+if __name__ == '__main__':
 
-    arr_rates_types = np.zeros((2, total_hours), dtype=int)
-    df_arrivals = pd.read_csv(current_path + '/Arrivals.csv')
-    df_service_time = pd.read_csv(current_path + '/Service_time.csv')
-    df_abandonment = pd.read_csv(current_path + '/Abandonment.csv')
-    df_number_of_agents = pd.read_csv(current_path + '/number_of_agents.csv')
-    if shrink == '1':
-        df_arrivals['private'] = np.ceil(df_arrivals['private'] / 8).astype(int)
-        df_arrivals['not_private'] = np.ceil(df_arrivals['not_private'] / 8).astype(int)
-        df_number_of_agents['number_of_agents'] = np.ceil(df_number_of_agents['number_of_agents']/8).astype(int)
-        number_of_weeks = np.arange(0, 9, 1)
-    else:
-        number_of_weeks = np.arange(0, 6, 1)
+    np.random.seed(42)
+    path = input("Izik's computer? : ")
+    shrunk = input("Shrunk system? : ")
+    for exp in [12]:
+        print('Experiment: ' + str(exp))
+        if path == '0':
+            current_path = r'C:\Users\Elisheva\Dropbox (BIU)\QueueMining\WorkingDocs\Simulator\Experiments\Experiment_' + str(exp)
+        elif path == '1':
+            current_path = r'C:\Users\elishevaz\Dropbox (BIU)\QueueMining\WorkingDocs\Simulator\Experiments\Experiment_' + str(exp)
 
-    for week in number_of_weeks:
-        print('---------------------------------Week: ' + str(week) + '---------------------------------')
-        for day in [0, 1, 2, 3, 6]: #wihtout saturday
-        #for day in [1]:
-            print('---------------------------------Day: ' + str(day) + '---------------------------------')
-            for type in range(ctypes):
-                if exp == 0:
-                    mean = df_arrivals[ctypes_dict[type]].loc[df_arrivals['Weekday'] == day].to_numpy()
-                    std = df_arrivals[c_std_dict[type]].loc[df_arrivals['Weekday'] == day].to_numpy()
-                    arr_rates_types[type] = [int(np.random.uniform(low= max(0, mean[i]-std[i]), high=(mean[i]+std[i]))) for i in range(len(mean))]
-                else:
-                    arr_rates_types[type] = df_arrivals[ctypes_dict[type]].loc[df_arrivals['Weekday'] == day].to_numpy()
-            num_servers = df_number_of_agents['number_of_agents'].loc[df_number_of_agents['Weekday'] == day].to_numpy()
-            max_servers = np.max(num_servers)
-            hours = [num_servers > 0]
-            #service_time definition
+        start = time.time()
+        df = pd.DataFrame()
+        ctypes = 2
+        ctypes_dict = {0: 'private', 1: 'not_private'}
+        c_std_dict = {0: 'std_private', 1: 'std_not_private'}
+        speed_up_flag = 0
+        total_hours = 12
+        if exp == 0 or exp == 12:
+            total_hours = 24
+        if exp == 2:
+            service_distribution = 'Exponential'
+        elif exp != 2:
+            service_distribution = 'LogNormal'
+        elif exp == 6:
+            speed_up_flag = 1
 
-            if exp == 0: # parameters with std
-                total_hours = 24
-                private_mean_s = df_service_time['private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
-                private_std_s = df_service_time['std_private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
-                service_time_sample_private = np.array([int(np.random.uniform(low=max(0, private_mean_s[i]-private_std_s[i]),
-                                                                          high=(private_mean_s[i]+private_std_s[i]))) for i in range(len(private_mean_s))])
+        arr_rates_types = np.zeros((2, total_hours), dtype=int)
+        df_arrivals = pd.read_csv(current_path + '/Arrivals.csv')
+        df_service_time = pd.read_csv(current_path + '/Service_time.csv')
+        df_abandonment = pd.read_csv(current_path + '/Abandonment.csv')
+        df_number_of_agents = pd.read_csv(current_path + '/number_of_agents.csv')
+        if shrunk == '1':
+            divisor = 30
+            df_arrivals['private'] = np.ceil(df_arrivals['private'] / divisor).astype(int)
+            df_arrivals['not_private'] = np.ceil(df_arrivals['not_private'] / divisor).astype(int)
+            df_number_of_agents['number_of_agents'] = np.ceil(df_number_of_agents['number_of_agents']/divisor).astype(int)
+            number_of_weeks = np.arange(0, 30, 1)
+        else:
+            number_of_weeks = np.arange(0, 6, 1)
 
-                not_private_mean_s = df_service_time['not_private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
-                not_private_std_s = df_service_time['std_not_private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
-                service_time_sample_not_private = np.array([int(np.random.uniform(low=max(0, not_private_mean_s[i] - not_private_std_s[i]),
-                                                                          high=(not_private_mean_s[i] + not_private_std_s[i]))) for i in range(len(not_private_mean_s))])
-            else: # parameters without std (mean definition)
-                total_hours = 12
-                service_time_sample_not_private = df_service_time['not_private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
-                service_time_sample_private = df_service_time['private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
+        for week in number_of_weeks:
+            print('---------------------------------Week: ' + str(week) + '---------------------------------')
+            for day in [0, 1, 2, 3, 6]: #wihtout saturday
+            #for day in [1]:
+                print('---------------------------------Day: ' + str(day) + '---------------------------------')
+                for type in range(ctypes):
+                    if exp == 0:
+                        mean = df_arrivals[ctypes_dict[type]].loc[df_arrivals['Weekday'] == day].to_numpy()
+                        std = df_arrivals[c_std_dict[type]].loc[df_arrivals['Weekday'] == day].to_numpy()
+                        arr_rates_types[type] = [int(np.random.uniform(low= max(0, mean[i]-std[i]), high=(mean[i]+std[i]))) for i in range(len(mean))]
+                    else:
+                        arr_rates_types[type] = df_arrivals[ctypes_dict[type]].loc[df_arrivals['Weekday'] == day].to_numpy()
+                num_servers = df_number_of_agents['number_of_agents'].loc[df_number_of_agents['Weekday'] == day].to_numpy()
+                max_servers = np.max(num_servers)
+                hours = [num_servers > 0]
+                #service_time definition
 
-            service_rates = np.divide(np.full((1, total_hours), 3600, dtype=float), service_time_sample_private) #TODO: CHECK IF WE CAN ADD THE NOT PRIVATE SERVICE RATE
+                if exp == 0: # parameters with std
+                    private_mean_s = df_service_time['private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
+                    private_std_s = df_service_time['std_private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
+                    service_time_sample_private = np.array([int(np.random.uniform(low=max(0, private_mean_s[i]-private_std_s[i]),
+                                                                              high=(private_mean_s[i]+private_std_s[i]))) for i in range(len(private_mean_s))])
 
-            server_schedule = np.reshape([0] * max_servers * total_hours, (max_servers, total_hours))
-            for j in range(total_hours):
-                for i in range(max_servers):
-                    if i < num_servers[j]:
-                        server_schedule[i][j] = 1
-            # now call arrivals generator - use arrays "arr_rates_types", "mean_patience_types"
-            mean_patience = df_abandonment['wait_time'].loc[df_abandonment['Weekday'] == day].to_numpy()/3600
-            #mean_patience_types = np.full((1, ctypes), mean_patience)
-            mean_patience_types = [mean_patience, np.array([float('inf')] * total_hours)]
-            mean_service_private = service_time_sample_private/3600
-            mean_service_not_private = service_time_sample_not_private/3600
+                    not_private_mean_s = df_service_time['not_private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
+                    not_private_std_s = df_service_time['std_not_private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
+                    service_time_sample_not_private = np.array([int(np.random.uniform(low=max(0, not_private_mean_s[i] - not_private_std_s[i]),
+                                                                              high=(not_private_mean_s[i] + not_private_std_s[i]))) for i in range(len(not_private_mean_s))])
+                else: # parameters without std (mean definition)
+                    service_time_sample_not_private = df_service_time['not_private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
+                    service_time_sample_private = df_service_time['private'].loc[df_service_time['Weekday'] == day].to_numpy(dtype=float)
 
-            service_mean_types = [mean_service_private, mean_service_not_private]
-            #service_std_types = [sigma_private, sigma_not_private]
-            arrivals = gen_arrivals(arr_rates_types, mean_patience_types, total_hours)
-            # -> produces "arrivals" dataframe with columns: "arr_num","time","patience", "type"
-            # then call simulator - use arrays: "arrivals", "server_schedule", "service_mean_types", "service_rates"
-            s = Simulator(arrivals, week, day, server_schedule, service_mean_types, service_rates, total_hours=total_hours, service_distribution=service_distribution, speed_up_flag=speed_up_flag)
-            s.run()
-            df = pd.concat([df, s.summary], ignore_index=True)
+                service_rates = np.divide(np.full((1, total_hours), 3600, dtype=float), service_time_sample_private) #TODO: CHECK IF WE CAN ADD THE NOT PRIVATE SERVICE RATE
+
+                server_schedule = np.reshape([0] * max_servers * total_hours, (max_servers, total_hours))
+                for j in range(total_hours):
+                    for i in range(max_servers):
+                        if i < num_servers[j]:
+                            server_schedule[i][j] = 1
+                # now call arrivals generator - use arrays "arr_rates_types", "mean_patience_types"
+                mean_patience = df_abandonment['wait_time'].loc[df_abandonment['Weekday'] == day].to_numpy()/3600
+                #mean_patience_types = np.full((1, ctypes), mean_patience)
+                mean_patience_types = [mean_patience, np.array([float('inf')] * total_hours)]
+                mean_service_private = service_time_sample_private/3600
+                mean_service_not_private = service_time_sample_not_private/3600
+
+                service_mean_types = [mean_service_private, mean_service_not_private]
+                #service_std_types = [sigma_private, sigma_not_private]
+                arrivals = gen_arrivals(arr_rates_types, mean_patience_types, total_hours)
+                # -> produces "arrivals" dataframe with columns: "arr_num","time","patience", "type"
+                # then call simulator - use arrays: "arrivals", "server_schedule", "service_mean_types", "service_rates"
+                s = Simulator(arrivals, week, day, server_schedule, service_mean_types, service_rates, total_hours=total_hours, service_distribution=service_distribution, speed_up_flag=speed_up_flag)
+                s.run()
+                df = pd.concat([df, s.summary], ignore_index=True)
 
 
-    process_time = time.time() - start
-    print('Minutes since the beginning: ', int((process_time/60)))
-    print(process_time)
-    print(process_time/60)
-    print('Data Shape: ', df.shape)
+        process_time = time.time() - start
+        print('Time elapsed: ', int((process_time/60)))
+        print(process_time)
+        print(process_time/60)
+        print('Data Shape: ', df.shape)
 
-    if shrink == '1':
-        df.to_csv(current_path + '/New_features_simulation_shrinked.csv')
-    else:
-        df.to_csv(current_path+'/New_features_simulation.csv')
+        if shrunk == '1':
+            df.to_csv(current_path + '/New_features_simulation_lowest_system.csv')
+        else:
+            df.to_csv(current_path+'/New_features_simulation.csv')
 
 
